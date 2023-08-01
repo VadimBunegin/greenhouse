@@ -6,13 +6,9 @@ MicroDS3231 rtc;
 const char* ssid = "Beeline_5E79";
 const char* password = "92515952";
 
-const byte Interrupt_Pin PROGMEM = D1;
+const byte Interrupt_Pin PROGMEM = D8;
 volatile uint16_t count_imp;
 float count_imp_all;
-uint16_t liter_hour;
-uint16_t liter_min;
-uint32_t currentTime, loopTime;
-float liter;
 
 ESP8266WebServer server(80);
 uint16_t requiredMilliliters = 0;
@@ -85,9 +81,6 @@ void setup()
   server.on("/set", handleSet);
 
   server.begin();
-
-  currentTime = millis();
-  loopTime = currentTime;
 }
 
 void loop()
@@ -95,5 +88,6 @@ void loop()
   server.handleClient();
   count_imp_all = count_imp_all + count_imp;
   count_imp = 0;
-
+  Serial.println(rtc.getSeconds());
+  
 }
