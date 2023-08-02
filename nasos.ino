@@ -1,12 +1,15 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <microDS3231.h>
+// relle
+#define RELAY_IN D7 
+
 MicroDS3231 rtc;
 
 const char* ssid = "Beeline_5E79";
 const char* password = "92515952";
 
-const byte Interrupt_Pin PROGMEM = D8;
+const byte Interrupt_Pin PROGMEM = D8; // rashodomer
 volatile uint16_t count_imp;
 float count_imp_all;
 
@@ -20,12 +23,8 @@ ICACHE_RAM_ATTR void getFlow()
   count_imp++;
   if (count_imp_all >= requiredMilliliters * 2) // Assuming 450 pulses per liter, requiredMilliliters are in milliliters, so we need 2 * requiredMilliliters pulses to pass the required amount.
   {
-    displayHello = true;
-    if (displayHello)
-    {
-      Serial.println("Hello");
-      displayHello = false; // Reset the "Hello" display flag
-    }
+    Serial.println("Полив закончился!!!");
+    digitalWrite(RELAY_IN, LOW);
     count_imp_all = 0;    // Reset the total accumulated milliliters
     count_imp = 0; 
   }
@@ -59,13 +58,17 @@ void handleSet()
   server.send(200, "text/html", "<html><body><p>Milliliters set successfully.</p></body></html>");
 }
 
+void start_poliv(){
+    Serial.println("Начался полив!");
+    digitalWrite(RELAY_IN, HIGH);
+}
 void setup()
 {
   Serial.begin(115200);
 
   pinMode(Interrupt_Pin, INPUT);
   attachInterrupt(digitalPinToInterrupt(Interrupt_Pin), getFlow, FALLING);
-
+  pinMode(RELAY_IN, OUTPUT);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED)
   {
@@ -88,6 +91,7 @@ void loop()
   server.handleClient();
   count_imp_all = count_imp_all + count_imp;
   count_imp = 0;
-  Serial.println(rtc.getSeconds());
-  
+  if (rtc.getSeconds() == 1){
+    start_poliv();
+  }
 }
