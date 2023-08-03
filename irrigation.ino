@@ -1,8 +1,24 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <microDS3231.h>
-// relle
-#define RELAY_IN D7 
+#include "DHTesp.h"
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+// Relay pins
+#define RELAY_IN1 D1 // Window open
+#define RELAY_IN2 D2 // Window close
+#define RELAY_IN3 D3 // Light
+#define RELAY_IN4 D4 // Irrigation
+
+// Flow meter
+const byte Interrupt_Pin = D8;
+volatile uint16_t count_imp;
+float count_imp_all;
+uint16_t requiredMilliliters = 0;
+
+bool isPolivRunning = false;
+bool is_light_on = false;
 
 MicroDS3231 rtc;
 ESP8266WebServer server(80);
@@ -10,26 +26,24 @@ ESP8266WebServer server(80);
 const char* ssid = "Beeline_5E79";
 const char* password = "92515952";
 
-const byte Interrupt_Pin PROGMEM = D8; // rashodomer
-volatile uint16_t count_imp;
-float count_imp_all;
-uint16_t requiredMilliliters = 0;
-bool isPolivRunning = false;
+const int oneWireBus = D6;
+OneWire oneWire(oneWireBus);
+DallasTemperature sensors(&oneWire);
 
-//-----------------------------------------------
-ICACHE_RAM_ATTR void getFlow()
+DHTesp dht;
+
+void ICACHE_RAM_ATTR getFlow()
 {
   count_imp++;
-  if (count_imp_all >= requiredMilliliters * 2) // Assuming 450 pulses per liter, requiredMilliliters are in milliliters, so we need 2 * requiredMilliliters pulses to pass the required amount.
+  if (count_imp_all >= requiredMilliliters * 2)
   {
     Serial.println("Полив закончился!!!");
-    digitalWrite(RELAY_IN, LOW);
-    count_imp_all = 0;    // Reset the total accumulated milliliters
+    digitalWrite(RELAY_IN4, HIGH);
+    count_imp_all = 0;
     count_imp = 0;
-    isPolivRunning = false; // Set the irrigation status to false
+    isPolivRunning = false;
   }
 }
-//-----------------------------------------------
 
 void handleRoot()
 {
@@ -41,10 +55,6 @@ void handleRoot()
   html += "<input type='button' value='Set' onclick='setMilliliters()'>";
   html += "</form>";
 
-  // Add the button to start the poliv (irrigation) manually
-  html += "<button type='button' onclick='startPoliv()'>Start Poliv</button>";
-  html += "<button type='button' onclick='stopPoliv()'>Stop Poliv</button>";
-
   html += "<p>Status: ";
   if (isPolivRunning) {
     html += "Irrigation is running";
@@ -52,7 +62,23 @@ void handleRoot()
     html += "Irrigation is not running";
   }
   html += "</p>";
-  // JavaScript function to submit the form and start poliv
+
+  html += "<button type='button' onclick='startPoliv()'>Start Poliv</button>";
+  html += "<button type='button' onclick='stopPoliv()'>Stop Poliv</button>";
+
+  html += "<hr>";
+  html += "<p>Light Status: ";
+  if (is_light_on) {
+    html += "On";
+  } else {
+    html += "Off";
+  }
+
+
+  html += "</p>";
+  html += "<button type='button' onclick='startLight()'>Start Light</button>";
+  html += "<button type='button' onclick='stopLight()'>Stop Light</button>";
+
   html += "<script>";
 
   html += "function startPoliv() {";
@@ -75,6 +101,17 @@ void handleRoot()
   html += "  xhr.send(formData);";
   html += "}";
 
+  html += "function startLight() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  xhr.open('POST', '/start-light', true);";
+  html += "  xhr.send();";
+  html += "}";
+  html += "function stopLight() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  xhr.open('POST', '/stop-light', true);";
+  html += "  xhr.send();";
+  html += "}";
+
   html += "</script>";
   html += "</body></html>";
 
@@ -86,35 +123,52 @@ void handleSet()
   if (server.hasArg("milliliters"))
   {
     requiredMilliliters = server.arg("milliliters").toInt() / 5;
-    count_imp_all = 0;    // Reset the total accumulated milliliters
-    count_imp = 0;        // Reset the current round's milliliters
+    count_imp_all = 0;
+    count_imp = 0;
   }
-  server.send(200, "text/html", ""); // Empty response since we are not redirecting
+  server.send(200, "text/html", "");
 }
 
-void start_poliv(){
-    Serial.println("Начался полив!");
-    digitalWrite(RELAY_IN, HIGH);
-    isPolivRunning = true;
+void start_light() {
+  digitalWrite(RELAY_IN3, LOW);
+  is_light_on = true;
 }
 
-void stop_poliv() {
+void stop_light() {
+  digitalWrite(RELAY_IN3, HIGH);
+  is_light_on = false;
+}
+
+void start_poliv()
+{
+  Serial.println("Начался полив!");
+  digitalWrite(RELAY_IN4, LOW);
+  isPolivRunning = true;
+}
+
+void stop_poliv()
+{
   Serial.println("Полив остановлен!");
-  digitalWrite(RELAY_IN, LOW);
+  digitalWrite(RELAY_IN4, HIGH);
   isPolivRunning = false;
 }
-
 
 void setup()
 {
   Serial.begin(115200);
-  server.begin();
-
-  server.on("/start-poliv", start_poliv);
-  server.on("/stop-poliv", stop_poliv);
 
   pinMode(Interrupt_Pin, INPUT);
-  pinMode(RELAY_IN, OUTPUT);
+  pinMode(RELAY_IN1, OUTPUT);
+  pinMode(RELAY_IN2, OUTPUT);
+  pinMode(RELAY_IN3, OUTPUT);
+  pinMode(RELAY_IN4, OUTPUT);
+
+  digitalWrite(RELAY_IN1, HIGH);
+  digitalWrite(RELAY_IN2, HIGH);
+  digitalWrite(RELAY_IN3, HIGH);
+  digitalWrite(RELAY_IN4, HIGH);
+
+  dht.setup(D5, DHTesp::DHT22);
 
   attachInterrupt(digitalPinToInterrupt(Interrupt_Pin), getFlow, FALLING);
 
@@ -131,6 +185,10 @@ void setup()
 
   server.on("/", handleRoot);
   server.on("/set", handleSet);
+  server.on("/start-poliv", start_poliv);
+  server.on("/stop-poliv", stop_poliv);
+  server.on("/start-light", start_light);
+  server.on("/stop-light", stop_light);
 
   server.begin();
 }
@@ -140,7 +198,19 @@ void loop()
   server.handleClient();
   count_imp_all = count_imp_all + count_imp;
   count_imp = 0;
-  if (rtc.getSeconds() == 1){
+
+  if (rtc.getSeconds() == 1)
+  {
     start_poliv();
+  }
+
+  float humidity = dht.getHumidity();
+  float temperature = sensors.getTempCByIndex(0);
+
+  if (analogRead(A0) > 200){
+    start_light();
+  }
+  else if (analogRead(A0) < 200){
+    stop_light();
   }
 }
