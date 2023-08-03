@@ -20,6 +20,9 @@ uint16_t requiredMilliliters = 0;
 bool isPolivRunning = false;
 bool is_light_on = false;
 bool manualControl = false;
+int lightThreshold = 200; // Default threshold value
+int lightOffThreshold = 100;
+
 
 MicroDS3231 rtc;
 ESP8266WebServer server(80);
@@ -49,10 +52,10 @@ void ICACHE_RAM_ATTR getFlow()
 void handleRoot()
 {
 String html = "<html><body>";
-  html += "<h1>Flow Meter Control</h1>";
+  html += "<h1>Irrigation Control</h1>";
   html += "<p>Enter the required milliliters:</p>";
   html += "<form id='setForm' method='POST'>";
-  html += "<input type='number' name='milliliters' min='1'><br>";
+  html += "<input type='number' name='milliliters' min='1' value='" + String(requiredMilliliters*5) + "'><br>";
   html += "<input type='button' value='Set' onclick='setMilliliters()'>";
   html += "</form>";
 
@@ -64,10 +67,25 @@ String html = "<html><body>";
   }
   html += "</p>";
 
-  html += "<button type='button' onclick='startPoliv()'>Start Poliv</button>";
-  html += "<button type='button' onclick='stopPoliv()'>Stop Poliv</button>";
+  html += "<button type='button' onclick='startPoliv()'>Start Irrigation</button>";
+  html += "<button type='button' onclick='stopPoliv()'>Stop Irrigation</button>";
 
   html += "<hr>";
+
+  html += "<h1>Light Control</h1>";
+
+  html += "<p>Include when the value is less...(On)</p>";
+  html += "<form id='setThresholdForm' method='POST'>";
+  html += "<input type='number' name='threshold' value='" + String(lightThreshold) + "'><br>";
+  html += "<input type='button' value='Set Threshold' onclick='setThreshold()'>";
+  html += "</form>";
+
+  html += "<p>Turn off when the value is greater...(Off):</p>";
+  html += "<form id='setOffThresholdForm' method='POST'>";
+  html += "<input type='number' name='offThreshold' value='" + String(lightOffThreshold) + "'><br>";
+  html += "<input type='button' value='Set Off Threshold' onclick='setOffThreshold()'>";
+  html += "</form>";
+
   html += "<p>Light Status: ";
   if (is_light_on) {
     html += "On";
@@ -75,10 +93,11 @@ String html = "<html><body>";
     html += "Off";
   }
   html += "</p>";
+
   html += "<button type='button' onclick='startLight()'>Turn On Light</button>";
   html += "<button type='button' onclick='stopLight()'>Turn Off Light</button>";
   html += "<button type='button' onclick='resetManualControl()'>Reset Manual Control</button>";
-
+  html += "<hr>";
 
   html += "<script>";
 
@@ -124,6 +143,23 @@ String html = "<html><body>";
   html += "  xhr.send();";
   html += "  location.reload();";
   html += "}";
+
+  html += "function setThreshold() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  var form = document.getElementById('setThresholdForm');";
+  html += "  var formData = new FormData(form);";
+  html += "  xhr.open('POST', '/set-threshold', true);";
+  html += "  xhr.send(formData);";
+  html += "}";
+  
+  html += "function setOffThreshold() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  var form = document.getElementById('setOffThresholdForm');";
+  html += "  var formData = new FormData(form);";
+  html += "  xhr.open('POST', '/set-off-threshold', true);";
+  html += "  xhr.send(formData);";
+  html += "}";
+
   html += "</script>";
   html += "</body></html>";
   
@@ -138,6 +174,26 @@ void handleSet()
     requiredMilliliters = server.arg("milliliters").toInt() / 5;
     count_imp_all = 0;
     count_imp = 0;
+  }
+  server.send(200, "text/html", "");
+}
+
+void handleSetThreshold()
+{
+  if (server.hasArg("threshold"))
+  {
+    int newThreshold = server.arg("threshold").toInt();
+    lightThreshold = newThreshold;
+  }
+  server.send(200, "text/html", "");
+}
+
+void handleSetOffThreshold()
+{
+  if (server.hasArg("offThreshold"))
+  {
+    int newOffThreshold = server.arg("offThreshold").toInt();
+    lightOffThreshold = newOffThreshold;
   }
   server.send(200, "text/html", "");
 }
@@ -226,6 +282,8 @@ void setup()
   server.on("/start-light", start_light_button);
   server.on("/stop-light", stop_light_button);
   server.on("/reset-manual-control", handleResetManualControl);
+  server.on("/set-threshold", handleSetThreshold);
+  server.on("/set-off-threshold", handleSetOffThreshold);
 
   server.begin();
 }
@@ -244,20 +302,16 @@ void loop()
   float humidity = dht.getHumidity();
   float temperature = sensors.getTempCByIndex(0);
 
-// Check if the light is currently controlled manually
-// Check if the light is currently controlled manually
-
   if (!manualControl){
-    if (analogRead(A0) > 200)
+    if (analogRead(A0) < lightThreshold)
     {
       start_light();
     }
-    else
+    else if (analogRead(A0) > lightOffThreshold)
     {
       stop_light();
     }
   }
-  Serial.println(manualControl);
 
 
 }
