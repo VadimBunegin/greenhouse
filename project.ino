@@ -19,7 +19,7 @@ uint16_t requiredMilliliters = 0;
 
 bool isPolivRunning = false;
 bool is_light_on = false;
-bool isAutoMode = true; // Default to auto mode
+bool manualControl = false;
 
 MicroDS3231 rtc;
 ESP8266WebServer server(80);
@@ -48,21 +48,13 @@ void ICACHE_RAM_ATTR getFlow()
 
 void handleRoot()
 {
-  String html = "<html><body>";
+String html = "<html><body>";
   html += "<h1>Flow Meter Control</h1>";
   html += "<p>Enter the required milliliters:</p>";
   html += "<form id='setForm' method='POST'>";
   html += "<input type='number' name='milliliters' min='1'><br>";
   html += "<input type='button' value='Set' onclick='setMilliliters()'>";
   html += "</form>";
-
-  html += "<p>Mode: ";
-  if (isAutoMode) {
-    html += "Auto";
-  } else {
-    html += "Manual";
-  }
-  html += "</p>";
 
   html += "<p>Status: ";
   if (isPolivRunning) {
@@ -72,7 +64,6 @@ void handleRoot()
   }
   html += "</p>";
 
-  html += "<button type='button' onclick='toggleMode()'>Toggle Mode</button>";
   html += "<button type='button' onclick='startPoliv()'>Start Poliv</button>";
   html += "<button type='button' onclick='stopPoliv()'>Stop Poliv</button>";
 
@@ -83,21 +74,26 @@ void handleRoot()
   } else {
     html += "Off";
   }
-
   html += "</p>";
-  html += "<button type='button' onclick='toggleLight()'>Toggle Light</button>";
+  html += "<button type='button' onclick='startLight()'>Turn On Light</button>";
+  html += "<button type='button' onclick='stopLight()'>Turn Off Light</button>";
+  html += "<button type='button' onclick='resetManualControl()'>Reset Manual Control</button>";
+
+
   html += "<script>";
 
   html += "function startPoliv() {";
   html += "  var xhr = new XMLHttpRequest();";
   html += "  xhr.open('POST', '/start-poliv', true);";
   html += "  xhr.send();";
+  html += "  location.reload();";
   html += "}";
 
   html += "function stopPoliv() {";
   html += "  var xhr = new XMLHttpRequest();";
   html += "  xhr.open('POST', '/stop-poliv', true);";
   html += "  xhr.send();";
+  html += "  location.reload();";
   html += "}";
 
   html += "function setMilliliters() {";
@@ -108,20 +104,29 @@ void handleRoot()
   html += "  xhr.send(formData);";
   html += "}";
 
-  html += "function toggleLight() {";
+  html += "function startLight() {";
   html += "  var xhr = new XMLHttpRequest();";
-  html += "  xhr.open('POST', '/toggle-light', true);";
+  html += "  xhr.open('POST', '/start-light', true);";
   html += "  xhr.send();";
+  html += "  location.reload();";
   html += "}";
 
-  html += "function toggleMode() {";
+  html += "function stopLight() {";
   html += "  var xhr = new XMLHttpRequest();";
-  html += "  xhr.open('POST', '/toggle-mode', true);";
+  html += "  xhr.open('POST', '/stop-light', true);";
   html += "  xhr.send();";
+  html += "  location.reload();";
   html += "}";
 
+  html += "function resetManualControl() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  xhr.open('POST', '/reset-manual-control', true);";
+  html += "  xhr.send();";
+  html += "  location.reload();";
+  html += "}";
   html += "</script>";
   html += "</body></html>";
+  
 
   server.send(200, "text/html", html);
 }
@@ -137,27 +142,6 @@ void handleSet()
   server.send(200, "text/html", "");
 }
 
-void toggleLight()
-{
-  if (isAutoMode) return; // Ignore manual control if in auto mode
-  if (is_light_on)
-  {
-    stop_light();
-  }
-  else
-  {
-    start_light();
-  }
-}
-
-void toggleMode()
-{
-  isAutoMode = !isAutoMode;
-  if (isAutoMode) {
-    stop_light(); // Turn off the light when switching to auto mode
-  }
-}
-
 void start_light()
 {
   digitalWrite(RELAY_IN3, LOW);
@@ -168,6 +152,27 @@ void stop_light()
 {
   digitalWrite(RELAY_IN3, HIGH);
   is_light_on = false;
+}
+
+void start_light_button()
+{
+  digitalWrite(RELAY_IN3, LOW);
+  manualControl = true;
+  is_light_on = true;
+}
+
+void stop_light_button()
+{
+  digitalWrite(RELAY_IN3, HIGH);
+  manualControl = true;
+  is_light_on = false;
+}
+
+void handleResetManualControl()
+{
+  manualControl = false; // Disable manual control, revert to automatic mode
+  Serial.print(manualControl);
+  server.send(200, "text/html", "");
 }
 
 void start_poliv()
@@ -218,8 +223,9 @@ void setup()
   server.on("/set", handleSet);
   server.on("/start-poliv", start_poliv);
   server.on("/stop-poliv", stop_poliv);
-  server.on("/toggle-light", toggleLight);
-  server.on("/toggle-mode", toggleMode);
+  server.on("/start-light", start_light_button);
+  server.on("/stop-light", stop_light_button);
+  server.on("/reset-manual-control", handleResetManualControl);
 
   server.begin();
 }
@@ -230,7 +236,7 @@ void loop()
   count_imp_all = count_imp_all + count_imp;
   count_imp = 0;
 
-  if (rtc.getSeconds() == 1 && isAutoMode)
+  if (rtc.getSeconds() == 1)
   {
     start_poliv();
   }
@@ -238,8 +244,10 @@ void loop()
   float humidity = dht.getHumidity();
   float temperature = sensors.getTempCByIndex(0);
 
-  if (isAutoMode)
-  {
+// Check if the light is currently controlled manually
+// Check if the light is currently controlled manually
+
+  if (!manualControl){
     if (analogRead(A0) > 200)
     {
       start_light();
@@ -249,4 +257,7 @@ void loop()
       stop_light();
     }
   }
+  Serial.println(manualControl);
+
+
 }
