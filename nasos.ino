@@ -41,6 +41,19 @@ void handleRoot()
   html += "<input type='submit' value='Set'>";
   html += "</form>";
   html += "<p>Note: Flow meter assumes 450 pulses per liter.</p>";
+
+  // Add the button to start the poliv (irrigation) manually
+  html += "<button type='button' onclick='startPoliv()'>Start Poliv</button>";
+
+  // JavaScript function to send an AJAX request to start poliv
+  html += "<script>";
+  html += "function startPoliv() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  xhr.open('POST', '/start-poliv', true);";
+  html += "  xhr.send();";
+  html += "}";
+  html += "</script>";
+
   html += "</body></html>";
 
   server.send(200, "text/html", html);
@@ -65,7 +78,8 @@ void start_poliv(){
 void setup()
 {
   Serial.begin(115200);
-
+  server.on("/start-poliv", start_poliv);
+  server.begin();
   pinMode(Interrupt_Pin, INPUT);
   attachInterrupt(digitalPinToInterrupt(Interrupt_Pin), getFlow, FALLING);
   pinMode(RELAY_IN, OUTPUT);
