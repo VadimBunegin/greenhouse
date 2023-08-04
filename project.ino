@@ -11,6 +11,8 @@
 #define RELAY_IN3 D3 // Light
 #define RELAY_IN4 D4 // Irrigation
 
+#define RELAY_IN5 1 // Irrigation
+
 // Flow meter
 const byte Interrupt_Pin = D8;
 volatile uint16_t count_imp;
@@ -93,6 +95,9 @@ String html = "<html><body>";
     html += "Off";
   }
   html += "</p>";
+
+  int lightSensorValue = analogRead(A0);
+  html += "<p>Light Sensor Value: " + String(lightSensorValue) + "</p>";
 
   html += "<button type='button' onclick='startLight()'>Turn On Light</button>";
   html += "<button type='button' onclick='stopLight()'>Turn Off Light</button>";
@@ -200,26 +205,26 @@ void handleSetOffThreshold()
 
 void start_light()
 {
-  digitalWrite(RELAY_IN3, LOW);
+  digitalWrite(RELAY_IN5, LOW);
   is_light_on = true;
 }
 
 void stop_light()
 {
-  digitalWrite(RELAY_IN3, HIGH);
+  digitalWrite(RELAY_IN5, HIGH);
   is_light_on = false;
 }
 
 void start_light_button()
 {
-  digitalWrite(RELAY_IN3, LOW);
+  digitalWrite(RELAY_IN5, LOW);
   manualControl = true;
   is_light_on = true;
 }
 
 void stop_light_button()
 {
-  digitalWrite(RELAY_IN3, HIGH);
+  digitalWrite(RELAY_IN5, HIGH);
   manualControl = true;
   is_light_on = false;
 }
@@ -254,11 +259,13 @@ void setup()
   pinMode(RELAY_IN2, OUTPUT);
   pinMode(RELAY_IN3, OUTPUT);
   pinMode(RELAY_IN4, OUTPUT);
+  pinMode(RELAY_IN5, OUTPUT);
 
   digitalWrite(RELAY_IN1, HIGH);
   digitalWrite(RELAY_IN2, HIGH);
   digitalWrite(RELAY_IN3, HIGH);
   digitalWrite(RELAY_IN4, HIGH);
+  digitalWrite(RELAY_IN5, HIGH);
 
   dht.setup(D5, DHTesp::DHT22);
 
