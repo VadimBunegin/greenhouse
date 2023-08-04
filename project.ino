@@ -6,24 +6,29 @@
 #include <DallasTemperature.h>
 
 // Relay pins
-#define RELAY_IN1 D1 // Window open
-#define RELAY_IN2 D2 // Window close
-#define RELAY_IN3 D3 // Light
+#define RELAY_IN1 D7 // Window open
+#define RELAY_IN2 D8 // Window close
+#define RELAY_IN3 D3 // Warm
 #define RELAY_IN4 D4 // Irrigation
 
-#define RELAY_IN5 1 // Irrigation
+#define RELAY_IN5 3 // Light
 
 // Flow meter
-const byte Interrupt_Pin = D8;
+const byte Interrupt_Pin = 1;
 volatile uint16_t count_imp;
 float count_imp_all;
 uint16_t requiredMilliliters = 0;
 
-bool isPolivRunning = false;
+bool is_irrigation_on = false;
 bool is_light_on = false;
-bool manualControl = false;
+bool is_warm_on = false;
+bool WarmManualControl = false;
+bool LightManualControl = false;
+
 int lightThreshold = 200; // Default threshold value
 int lightOffThreshold = 100;
+float warmThreshold = 20; // Default threshold value
+float warmOffThreshold = 10;
 
 
 MicroDS3231 rtc;
@@ -47,7 +52,7 @@ void ICACHE_RAM_ATTR getFlow()
     digitalWrite(RELAY_IN4, HIGH);
     count_imp_all = 0;
     count_imp = 0;
-    isPolivRunning = false;
+    is_irrigation_on = false;
   }
 }
 
@@ -62,7 +67,7 @@ String html = "<html><body>";
   html += "</form>";
 
   html += "<p>Status: ";
-  if (isPolivRunning) {
+  if (is_irrigation_on) {
     html += "Irrigation is running";
   } else {
     html += "Irrigation is not running";
@@ -102,6 +107,39 @@ String html = "<html><body>";
   html += "<button type='button' onclick='startLight()'>Turn On Light</button>";
   html += "<button type='button' onclick='stopLight()'>Turn Off Light</button>";
   html += "<button type='button' onclick='resetManualControl()'>Reset Manual Control</button>";
+  html += "<hr>";
+
+
+
+  html += "<h1>Warm Control</h1>";
+
+  html += "<p>Include when the value is less...(On)</p>";
+  html += "<form id='setThresholdFormWarm' method='POST'>";
+  html += "<input type='number' name='thresholdWarm' value='" + String(warmThreshold) + "'><br>";
+  html += "<input type='button' value='Set Threshold Warm' onclick='setThresholdWarm()'>";
+  html += "</form>";
+
+  html += "<p>Turn off when the value is greater...(Off):</p>";
+  html += "<form id='setOffThresholdFormWarm' method='POST'>";
+  html += "<input type='number' name='offThresholdWarm' value='" + String(warmOffThreshold) + "'>";
+  html += "<input type='button' value='Set Off Threshold Warm' onclick='setOffThresholdWarm()'>";
+  html += "</form>";
+
+  html += "<p>Light Status: ";
+  if (is_warm_on) {
+    html += "On";
+  } else {
+    html += "Off";
+  }
+  html += "</p>";
+
+  sensors.requestTemperatures();
+  float warmSensorValue = sensors.getTempCByIndex(0);
+  html += "<p>Light Sensor Value: " + String(warmSensorValue) + "</p>";
+
+  html += "<button type='button' onclick='startWarm()'>Turn On Warm</button>";
+  html += "<button type='button' onclick='stopWarm()'>Turn Off Warm</button>";
+  html += "<button type='button' onclick='resetManualControlWarm()'>Reset Manual Control Warm</button>";
   html += "<hr>";
 
   html += "<script>";
@@ -165,6 +203,46 @@ String html = "<html><body>";
   html += "  xhr.send(formData);";
   html += "}";
 
+
+
+  html += "function startWarm() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  xhr.open('POST', '/start-warm', true);";
+  html += "  xhr.send();";
+  html += "  location.reload();";
+  html += "}";
+
+  html += "function stopWarm() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  xhr.open('POST', '/stop-warm', true);";
+  html += "  xhr.send();";
+  html += "  location.reload();";
+  html += "}";
+
+  html += "function resetManualControlWarm() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  xhr.open('POST', '/reset-manual-control-warm', true);";
+  html += "  xhr.send();";
+  html += "  location.reload();";
+  html += "}";
+
+  html += "function setThresholdWarm() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  var form = document.getElementById('setThresholdFormWarm');";
+  html += "  var formData = new FormData(form);";
+  html += "  xhr.open('POST', '/set-threshold-warm', true);";
+  html += "  xhr.send(formData);";
+  html += "}";
+  
+  html += "function setOffThresholdWarm() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  var form = document.getElementById('setOffThresholdFormWarm');";
+  html += "  var formData = new FormData(form);";
+  html += "  xhr.open('POST', '/set-off-threshold-warm', true);";
+  html += "  xhr.send(formData);";
+  html += "}";
+
+
   html += "</script>";
   html += "</body></html>";
   
@@ -203,6 +281,26 @@ void handleSetOffThreshold()
   server.send(200, "text/html", "");
 }
 
+void handleSetThresholdWarm()
+{
+  if (server.hasArg("thresholdWarm"))
+  {
+    int newThreshold = server.arg("thresholdWarm").toInt();
+    warmThreshold = newThreshold;
+  }
+  server.send(200, "text/html", "");
+}
+
+void handleSetOffThresholdWarm()
+{
+  if (server.hasArg("offThresholdWarm"))
+  {
+    int newOffThreshold = server.arg("offThresholdWarm").toInt();
+    warmOffThreshold = newOffThreshold;
+  }
+  server.send(200, "text/html", "");
+}
+
 void start_light()
 {
   digitalWrite(RELAY_IN5, LOW);
@@ -218,21 +316,52 @@ void stop_light()
 void start_light_button()
 {
   digitalWrite(RELAY_IN5, LOW);
-  manualControl = true;
+  LightManualControl = true;
   is_light_on = true;
 }
 
 void stop_light_button()
 {
   digitalWrite(RELAY_IN5, HIGH);
-  manualControl = true;
+  LightManualControl = true;
   is_light_on = false;
+}
+
+void start_warm()
+{
+  digitalWrite(RELAY_IN3, LOW);
+  is_warm_on = true;
+}
+
+void stop_warm()
+{
+  digitalWrite(RELAY_IN3, HIGH);
+  is_warm_on = false;
+}
+
+void start_warm_button()
+{
+  digitalWrite(RELAY_IN3, LOW);
+  WarmManualControl = true;
+  is_warm_on = true;
+}
+
+void stop_warm_button()
+{
+  digitalWrite(RELAY_IN3, HIGH);
+  WarmManualControl = true;
+  is_warm_on = false;
+}
+
+void handleResetManualControlWarm()
+{
+  WarmManualControl = false; // Disable manual control, revert to automatic mode
+  server.send(200, "text/html", "");
 }
 
 void handleResetManualControl()
 {
-  manualControl = false; // Disable manual control, revert to automatic mode
-  Serial.print(manualControl);
+  LightManualControl = false; // Disable manual control, revert to automatic mode
   server.send(200, "text/html", "");
 }
 
@@ -240,14 +369,14 @@ void start_poliv()
 {
   Serial.println("Начался полив!");
   digitalWrite(RELAY_IN4, LOW);
-  isPolivRunning = true;
+  is_irrigation_on = true;
 }
 
 void stop_poliv()
 {
   Serial.println("Полив остановлен!");
   digitalWrite(RELAY_IN4, HIGH);
-  isPolivRunning = false;
+  is_irrigation_on = false;
 }
 
 void setup()
@@ -292,6 +421,12 @@ void setup()
   server.on("/set-threshold", handleSetThreshold);
   server.on("/set-off-threshold", handleSetOffThreshold);
 
+  server.on("/start-warm", start_warm_button);
+  server.on("/stop-warm", stop_warm_button);
+  server.on("/reset-manual-control-warm", handleResetManualControlWarm);
+  server.on("/set-threshold-warm", handleSetThresholdWarm);
+  server.on("/set-off-threshold-warm", handleSetOffThresholdWarm);
+
   server.begin();
 }
 
@@ -306,10 +441,11 @@ void loop()
     start_poliv();
   }
 
+  sensors.requestTemperatures();
   float humidity = dht.getHumidity();
   float temperature = sensors.getTempCByIndex(0);
 
-  if (!manualControl){
+  if (!LightManualControl){
     if (analogRead(A0) < lightThreshold)
     {
       start_light();
@@ -320,5 +456,15 @@ void loop()
     }
   }
 
+  if (!WarmManualControl){
+    if (sensors.getTempCByIndex(0) < warmThreshold)
+    {
+      start_warm();
+    }
+    else if (sensors.getTempCByIndex(0) > warmOffThreshold)
+    {
+      stop_warm();
+    }
+  }
 
 }
