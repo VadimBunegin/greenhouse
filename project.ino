@@ -17,7 +17,7 @@
 const byte Interrupt_Pin = 1;
 volatile uint16_t count_imp;
 float count_imp_all;
-uint16_t requiredMilliliters = 10;
+uint16_t requiredMilliliters = 200;
 
 bool is_irrigation_on = false;
 bool is_light_on = false;
@@ -25,6 +25,7 @@ bool is_warm_on = false;
 bool is_window_on = false;
 bool WarmManualControl = false;
 bool LightManualControl = false;
+bool WindowManualControl = false;
 
 int lightThreshold = 200; // Default threshold value
 int lightOffThreshold = 100;
@@ -132,7 +133,7 @@ String html = "<html><body>";
   html += "<input type='button' value='Set Off Threshold Warm' onclick='setOffThresholdWarm()'>";
   html += "</form>";
 
-  html += "<p>Light Status: ";
+  html += "<p>Warm Status: ";
   if (is_warm_on) {
     html += "On";
   } else {
@@ -142,7 +143,7 @@ String html = "<html><body>";
 
   sensors.requestTemperatures();
   float warmSensorValue = sensors.getTempCByIndex(0);
-  html += "<p>Light Sensor Value: " + String(warmSensorValue) + "</p>";
+  html += "<p>Temp Sensor Value: " + String(warmSensorValue) + "</p>";
 
   html += "<button type='button' onclick='startWarm()'>Turn On Warm</button>";
   html += "<button type='button' onclick='stopWarm()'>Turn Off Warm</button>";
@@ -161,7 +162,10 @@ String html = "<html><body>";
 
   html += "<button type='button' onclick='openWindow()'>Open Window</button>";
   html += "<button type='button' onclick='closeWindow()'>Close Window</button>";
-
+  html += "<button type='button' onclick='resetManualControlWindow()'>Reset Manual Control Window</button>";
+  float humidity = dht.getHumidity();
+  html += "<p>Temp Sensor Value: " + String(warmSensorValue) + "</p>";
+  html += "<p>Humidity Sensor Value: " + String(humidity) + "</p>";
   html += "<script>";
 
   html += "function startPoliv() {";
@@ -275,10 +279,17 @@ String html = "<html><body>";
   html += "  xhr.send();";
   html += "  location.reload();";
   html += "}";
+
+  html += "function resetManualControlWindow() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  xhr.open('POST', '/reset-manual-control-window', true);";
+  html += "  xhr.send();";
+  html += "  location.reload();";
+  html += "}";
   html += "</script>";
   html += "</body></html>";
   
-
+  
   server.send(200, "text/html", html);
 }
 
@@ -363,6 +374,26 @@ void close_window() {
   }
 }
 
+void open_window_button() {
+  if (!windowOpening && !windowStartTime && !windowClosing) {
+    digitalWrite(RELAY_IN1, LOW); // Start opening the window
+    windowStartTime = millis();
+    windowOpening = true;
+    is_window_on = true;
+    WindowManualControl = true;
+  }
+}
+
+void close_window_button() {
+  if (!windowClosing && windowStartTime && !windowOpening) {
+    digitalWrite(RELAY_IN2, LOW); // Start closing the window
+    windowStartTime = millis();
+    windowClosing = true;
+    is_window_on = false;
+    WindowManualControl = true;
+  }
+}
+
 void updateWindowStatus() {
   if (windowOpening && millis() - windowStartTime >= windowOpenDuration) {
     digitalWrite(RELAY_IN1, HIGH); // Stop opening the window
@@ -420,6 +451,12 @@ void stop_warm_button()
 void handleResetManualControlWarm()
 {
   WarmManualControl = false; // Disable manual control, revert to automatic mode
+  server.send(200, "text/html", "");
+}
+
+void handleResetManualControlWindow()
+{
+  WindowManualControl = false; // Disable manual control, revert to automatic mode
   server.send(200, "text/html", "");
 }
 
@@ -483,14 +520,14 @@ void setup()
   server.on("/reset-manual-control", handleResetManualControl);
   server.on("/set-threshold", handleSetThreshold);
   server.on("/set-off-threshold", handleSetOffThreshold);
-  server.on("/open-window", open_window);
-  server.on("/close-window", close_window);
+  server.on("/open-window", open_window_button);
+  server.on("/close-window", close_window_button);
   server.on("/start-warm", start_warm_button);
   server.on("/stop-warm", stop_warm_button);
   server.on("/reset-manual-control-warm", handleResetManualControlWarm);
   server.on("/set-threshold-warm", handleSetThresholdWarm);
   server.on("/set-off-threshold-warm", handleSetOffThresholdWarm);
-
+  server.on("/reset-manual-control-window", handleResetManualControlWindow);
   server.begin();
 }
 
@@ -507,6 +544,7 @@ void loop()
 
   sensors.requestTemperatures();
   float humidity = dht.getHumidity();
+  float dht_temperature = dht.getTemperature();
   float temperature = sensors.getTempCByIndex(0);
 
   if (!LightManualControl){
@@ -530,5 +568,15 @@ void loop()
       stop_warm();
     }
   }
+
+  if (!WindowManualControl){
+    if(temperature > 30){
+      open_window();
+    }
+    else if(temperature < 25 || humidity > 98){
+      close_window();
+    }
+  }
+
   updateWindowStatus();
 }
