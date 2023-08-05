@@ -17,11 +17,12 @@
 const byte Interrupt_Pin = 1;
 volatile uint16_t count_imp;
 float count_imp_all;
-uint16_t requiredMilliliters = 0;
+uint16_t requiredMilliliters = 10;
 
 bool is_irrigation_on = false;
 bool is_light_on = false;
 bool is_warm_on = false;
+bool is_window_on = false;
 bool WarmManualControl = false;
 bool LightManualControl = false;
 
@@ -29,6 +30,13 @@ int lightThreshold = 200; // Default threshold value
 int lightOffThreshold = 100;
 float warmThreshold = 20; // Default threshold value
 float warmOffThreshold = 10;
+
+const unsigned long windowOpenDuration = 30000; // Window open duration (in milliseconds)
+const unsigned long windowCloseDuration = 30000; // Window close duration (in milliseconds)
+
+unsigned long windowStartTime = 0;
+bool windowOpening = false;
+bool windowClosing = false;
 
 MicroDS3231 rtc;
 ESP8266WebServer server(80);
@@ -41,11 +49,6 @@ OneWire oneWire(oneWireBus);
 DallasTemperature sensors(&oneWire);
 
 DHTesp dht;
-
-int irrigationTimes[2][2] = {
-  {8, 0}, // First irrigation time (8:00 AM)
-  {16, 0} // Second irrigation time (4:00 PM)
-};
 
 void ICACHE_RAM_ATTR getFlow()
 {
@@ -63,27 +66,7 @@ void ICACHE_RAM_ATTR getFlow()
 void handleRoot()
 {
 String html = "<html><body>";
-
   html += "<h1>Irrigation Control</h1>";
-
-  html += "<p>Enter the first irrigation time:</p>";
-  html += "<form id='setTimeForm1' method='POST'>";
-  html += "<input type='number' name='hours1' min='0' max='23' placeholder='Hours'><br>";
-  html += "<input type='number' name='minutes1' min='0' max='59' placeholder='Minutes'><br>";
-  html += "</form>";
-
-  // Form for the second irrigation time
-  html += "<p>Enter the second irrigation time:</p>";
-  html += "<form id='setTimeForm2' method='POST'>";
-  html += "<input type='number' name='hours2' min='0' max='23' placeholder='Hours'><br>";
-  html += "<input type='number' name='minutes2' min='0' max='59' placeholder='Minutes'><br>";
-  html += "</form>";
-
-  // Save button for the irrigation times
-  html += "<button type='button' onclick='setTimes()'>Save Irrigation Times</button>";
-
-  // Display current time
-  html += "<p>Current Time: <span id='currentTime'></span></p>";
   html += "<p>Enter the required milliliters:</p>";
   html += "<form id='setForm' method='POST'>";
   html += "<input type='number' name='milliliters' min='1' value='" + String(requiredMilliliters*5) + "'><br>";
@@ -101,6 +84,7 @@ String html = "<html><body>";
   html += "<button type='button' onclick='startPoliv()'>Start Irrigation</button>";
   html += "<button type='button' onclick='stopPoliv()'>Stop Irrigation</button>";
 
+  html += "<p>Time: " + String(rtc.getTimeString()) + "</p>";
   html += "<hr>";
 
   html += "<h1>Light Control</h1>";
@@ -134,7 +118,6 @@ String html = "<html><body>";
   html += "<hr>";
 
 
-
   html += "<h1>Warm Control</h1>";
 
   html += "<p>Include when the value is less...(On)</p>";
@@ -165,6 +148,19 @@ String html = "<html><body>";
   html += "<button type='button' onclick='stopWarm()'>Turn Off Warm</button>";
   html += "<button type='button' onclick='resetManualControlWarm()'>Reset Manual Control Warm</button>";
   html += "<hr>";
+
+  html += "<h1>Window Control</h1>";
+
+  html += "<p>Status: ";
+  if (is_window_on) {
+    html += "Window open";
+  } else {
+    html += "Window close";
+  }
+  html += "</p>";
+
+  html += "<button type='button' onclick='openWindow()'>Open Window</button>";
+  html += "<button type='button' onclick='closeWindow()'>Close Window</button>";
 
   html += "<script>";
 
@@ -266,31 +262,18 @@ String html = "<html><body>";
   html += "  xhr.send(formData);";
   html += "}";
 
-  html += "function setTimes() {";
+  html += "function openWindow() {";
   html += "  var xhr = new XMLHttpRequest();";
-  html += "  var form1 = document.getElementById('setTimeForm1');";
-  html += "  var formData1 = new FormData(form1);";
-  html += "  xhr.open('POST', '/set-times', true);";
-  html += "  xhr.send(formData1);";
-  html += "  var form2 = document.getElementById('setTimeForm2');";
-  html += "  var formData2 = new FormData(form2);";
-  html += "  setTimeout(function() {";
-  html += "    xhr.open('POST', '/set-times', true);";
-  html += "    xhr.send(formData2);";
-  html += "  }, 500);"; // Add a small delay to send the second form
+  html += "  xhr.open('POST', '/open-window', true);";
+  html += "  xhr.send();";
+  html += "  location.reload();";
   html += "}";
 
-  // JavaScript code to get the current time and display it on the web page
-  html += "function updateCurrentTime() {";
+  html += "function closeWindow() {";
   html += "  var xhr = new XMLHttpRequest();";
-  html += "  xhr.onreadystatechange = function() {";
-  html += "    if (xhr.readyState === 4 && xhr.status === 200) {";
-  html += "      var currentTimeElement = document.getElementById('currentTime');";
-  html += "      currentTimeElement.textContent = xhr.responseText;";
-  html += "    }";
-  html += "  };";
-  html += "  xhr.open('GET', '/get-time', true);";
+  html += "  xhr.open('POST', '/close-window', true);";
   html += "  xhr.send();";
+  html += "  location.reload();";
   html += "}";
   html += "</script>";
   html += "</body></html>";
@@ -350,24 +333,6 @@ void handleSetOffThresholdWarm()
   server.send(200, "text/html", "");
 }
 
-void handleSetTimes()
-{
-  int hours1 = server.arg("hours1").toInt();
-  int minutes1 = server.arg("minutes1").toInt();
-  int hours2 = server.arg("hours2").toInt();
-  int minutes2 = server.arg("minutes2").toInt();
-
-  // Validate the input here if needed (e.g., check if hours and minutes are valid values)
-
-  // Set the irrigation times using the array
-  irrigationTimes[0][0] = hours1;
-  irrigationTimes[0][1] = minutes1;
-  irrigationTimes[1][0] = hours2;
-  irrigationTimes[1][1] = minutes2;
-
-  server.send(200, "text/html", ""); // Respond with an empty response
-}
-
 void start_light()
 {
   digitalWrite(RELAY_IN5, LOW);
@@ -378,6 +343,38 @@ void stop_light()
 {
   digitalWrite(RELAY_IN5, HIGH);
   is_light_on = false;
+}
+
+void open_window() {
+  if (!windowOpening && !windowStartTime && !windowClosing) {
+    digitalWrite(RELAY_IN1, LOW); // Start opening the window
+    windowStartTime = millis();
+    windowOpening = true;
+    is_window_on = true;
+  }
+}
+
+void close_window() {
+  if (!windowClosing && windowStartTime && !windowOpening) {
+    digitalWrite(RELAY_IN2, LOW); // Start closing the window
+    windowStartTime = millis();
+    windowClosing = true;
+    is_window_on = false;
+  }
+}
+
+void updateWindowStatus() {
+  if (windowOpening && millis() - windowStartTime >= windowOpenDuration) {
+    digitalWrite(RELAY_IN1, HIGH); // Stop opening the window
+    windowOpening = false;
+    windowStartTime = true; // Update the window state
+  }
+
+  if (windowClosing && millis() - windowStartTime >= windowCloseDuration) {
+    digitalWrite(RELAY_IN2, HIGH); // Stop closing the window
+    windowClosing = false;
+    windowStartTime = false; // Update the window state
+  }
 }
 
 void start_light_button()
@@ -444,24 +441,17 @@ void stop_poliv()
   is_irrigation_on = false;
 }
 
-void handleGetCurrentTime()
-{
-  // Get the current time from the RTC
-  String currentTime = String(rtc.getHours()) + ":" + String(rtc.getMinutes()) + ":" + String(rtc.getSeconds());
-  server.send(200, "text/plain", currentTime);
-}
-
-
 void setup()
 {
+  
   Serial.begin(115200);
-
   pinMode(Interrupt_Pin, INPUT);
   pinMode(RELAY_IN1, OUTPUT);
   pinMode(RELAY_IN2, OUTPUT);
   pinMode(RELAY_IN3, OUTPUT);
   pinMode(RELAY_IN4, OUTPUT);
   pinMode(RELAY_IN5, OUTPUT);
+  
 
   digitalWrite(RELAY_IN1, HIGH);
   digitalWrite(RELAY_IN2, HIGH);
@@ -493,8 +483,8 @@ void setup()
   server.on("/reset-manual-control", handleResetManualControl);
   server.on("/set-threshold", handleSetThreshold);
   server.on("/set-off-threshold", handleSetOffThreshold);
-  server.on("/set-times", handleSetTimes);
-  server.on("/get-time", handleGetCurrentTime);
+  server.on("/open-window", open_window);
+  server.on("/close-window", close_window);
   server.on("/start-warm", start_warm_button);
   server.on("/stop-warm", stop_warm_button);
   server.on("/reset-manual-control-warm", handleResetManualControlWarm);
@@ -510,24 +500,14 @@ void loop()
   count_imp_all = count_imp_all + count_imp;
   count_imp = 0;
 
+  if (rtc.getSeconds() == 1)
+  {
+    start_poliv();
+  }
+
   sensors.requestTemperatures();
   float humidity = dht.getHumidity();
   float temperature = sensors.getTempCByIndex(0);
-
-  int currentHour = rtc.getHours();
-  int currentMinute = rtc.getMinutes();
-  int currentSecond = rtc.getSeconds();
-
-  // Check if the current time matches the first irrigation time
-  if (currentHour == irrigationTimes[0][0] && currentMinute == irrigationTimes[0][1] && currentSecond == 0)
-  {
-    start_poliv();
-  }
-  // Check if the current time matches the second irrigation time
-  else if (currentHour == irrigationTimes[1][0] && currentMinute == irrigationTimes[1][1] && currentSecond == 0)
-  {
-    start_poliv();
-  }
 
   if (!LightManualControl){
     if (analogRead(A0) < lightThreshold)
@@ -550,5 +530,5 @@ void loop()
       stop_warm();
     }
   }
-
+  updateWindowStatus();
 }
