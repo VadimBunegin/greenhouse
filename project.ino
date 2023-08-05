@@ -31,6 +31,8 @@ int lightThreshold = 200; // Default threshold value
 int lightOffThreshold = 100;
 float warmThreshold = 20; // Default threshold value
 float warmOffThreshold = 10;
+float windowThreshold = 30; // Default threshold value
+float windowOffThreshold = 25;
 
 const unsigned long windowOpenDuration = 30000; // Window open duration (in milliseconds)
 const unsigned long windowCloseDuration = 30000; // Window close duration (in milliseconds)
@@ -151,7 +153,17 @@ String html = "<html><body>";
   html += "<hr>";
 
   html += "<h1>Window Control</h1>";
+  html += "<p>Include when the value is less...(open)</p>";
+  html += "<form id='setThresholdFormWindow' method='POST'>";
+  html += "<input type='number' name='thresholdWindow' value='" + String(windowThreshold) + "'><br>";
+  html += "<input type='button' value='Set Threshold Window' onclick='setThresholdWindow()'>";
+  html += "</form>";
 
+  html += "<p>Turn off when the value is greater...(close):</p>";
+  html += "<form id='setOffThresholdFormWindow' method='POST'>";
+  html += "<input type='number' name='offThresholdWindow' value='" + String(windowOffThreshold) + "'>";
+  html += "<input type='button' value='Set Off Threshold Window' onclick='setOffThresholdWindow()'>";
+  html += "</form>";
   html += "<p>Status: ";
   if (is_window_on) {
     html += "Window open";
@@ -286,6 +298,22 @@ String html = "<html><body>";
   html += "  xhr.send();";
   html += "  location.reload();";
   html += "}";
+
+  html += "function setThresholdWindow() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  var form = document.getElementById('setThresholdFormWindow');";
+  html += "  var formData = new FormData(form);";
+  html += "  xhr.open('POST', '/set-threshold-window', true);";
+  html += "  xhr.send(formData);";
+  html += "}";
+  
+  html += "function setOffThresholdWindow() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  var form = document.getElementById('setOffThresholdFormWindow');";
+  html += "  var formData = new FormData(form);";
+  html += "  xhr.open('POST', '/set-off-threshold-window', true);";
+  html += "  xhr.send(formData);";
+  html += "}";
   html += "</script>";
   html += "</body></html>";
   
@@ -340,6 +368,26 @@ void handleSetOffThresholdWarm()
   {
     int newOffThreshold = server.arg("offThresholdWarm").toInt();
     warmOffThreshold = newOffThreshold;
+  }
+  server.send(200, "text/html", "");
+}
+
+void handleSetThresholdWindow()
+{
+  if (server.hasArg("thresholdWindow"))
+  {
+    int newThreshold = server.arg("thresholdWindow").toInt();
+    windowThreshold = newThreshold;
+  }
+  server.send(200, "text/html", "");
+}
+
+void handleSetOffThresholdWindow()
+{
+  if (server.hasArg("offThresholdWindow"))
+  {
+    int newOffThreshold = server.arg("offThresholdWindow").toInt();
+    windowOffThreshold = newOffThreshold;
   }
   server.send(200, "text/html", "");
 }
@@ -528,6 +576,8 @@ void setup()
   server.on("/set-threshold-warm", handleSetThresholdWarm);
   server.on("/set-off-threshold-warm", handleSetOffThresholdWarm);
   server.on("/reset-manual-control-window", handleResetManualControlWindow);
+  server.on("/set-threshold-window", handleSetThresholdWindow);
+  server.on("/set-off-threshold-window", handleSetOffThresholdWindow);
   server.begin();
 }
 
@@ -570,10 +620,10 @@ void loop()
   }
 
   if (!WindowManualControl){
-    if(temperature > 30){
+    if(temperature > windowThreshold){
       open_window();
     }
-    else if(temperature < 25 || humidity > 98){
+    else if(temperature < windowOffThreshold || humidity > 98){
       close_window();
     }
   }
