@@ -4,6 +4,7 @@
 #include "DHTesp.h"
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <WiFiManager.h> // Убедитесь, что библиотека WiFiManager установлена через менеджер библиотек Arduino IDE.
 
 // Relay pins
 #define RELAY_IN1 D7 // Window open
@@ -56,6 +57,10 @@ DallasTemperature sensors(&oneWire);
 
 DHTesp dht;
 
+void saveConfigCallback() {
+  Serial.println("Save config callback!");
+}
+
 void ICACHE_RAM_ATTR getFlow()
 {
   count_imp++;
@@ -71,7 +76,7 @@ void ICACHE_RAM_ATTR getFlow()
 
 void handleRoot()
 {
-String html = "<html><body>";
+  String html = "<html><body>";
   html += "<h1>Irrigation Control</h1>";
   html += "<p>Enter the required milliliters:</p>";
   html += "<form id='setForm' method='POST'>";
@@ -184,9 +189,9 @@ String html = "<html><body>";
   html += "<hr>";
 
   html += "<p>Ground Humidity Sensor Value: " + String(ground_hum) + "</p>";
-  
+  html += "<hr>";
+  html += "<button type='button' onclick='reconnect()'>Reconnect WIFI</button>";
   html += "<script>";
-
   html += "function startPoliv() {";
   html += "  var xhr = new XMLHttpRequest();";
   html += "  xhr.open('POST', '/start-poliv', true);";
@@ -245,8 +250,6 @@ String html = "<html><body>";
   html += "  xhr.open('POST', '/set-off-threshold', true);";
   html += "  xhr.send(formData);";
   html += "}";
-
-
 
   html += "function startWarm() {";
   html += "  var xhr = new XMLHttpRequest();";
@@ -320,6 +323,13 @@ String html = "<html><body>";
   html += "  var formData = new FormData(form);";
   html += "  xhr.open('POST', '/set-off-threshold-window', true);";
   html += "  xhr.send(formData);";
+  html += "}";
+
+  html += "function reconnect() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  xhr.open('POST', '/reconnect', true);";
+  html += "  xhr.send();";
+  html += "  location.reload();";
   html += "}";
   html += "</script>";
   html += "</body></html>";
@@ -557,16 +567,23 @@ void setup()
 
   attachInterrupt(digitalPinToInterrupt(Interrupt_Pin), getFlow, FALLING);
 
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(1000);
-    Serial.println("Connecting to WiFi...");
+  WiFiManager wifiManager;
+  wifiManager.setSaveConfigCallback(saveConfigCallback);
+
+  // Попробуем подключиться к последней известной Wi-Fi сети
+  if (!wifiManager.autoConnect("Config ESP8266")) {
+    Serial.println("Failed to connect. You can try to connect manually using 'Config ESP8266' AP.");
+  }
+  else{
+    reconnectToWiFi();
   }
 
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
+  // Если подключение установлено или было введено вручную, продолжим выполнение кода
+  Serial.println("Connected to Wi-Fi!");
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+  Serial.print("Password: ");
+  Serial.println(WiFi.psk());
 
   server.on("/", handleRoot);
   server.on("/set", handleSet);
@@ -587,6 +604,7 @@ void setup()
   server.on("/reset-manual-control-window", handleResetManualControlWindow);
   server.on("/set-threshold-window", handleSetThresholdWindow);
   server.on("/set-off-threshold-window", handleSetOffThresholdWindow);
+  server.on("/reconnect", reconnectToWiFi);
   server.begin();
 }
 
@@ -646,4 +664,30 @@ void loop()
   }
 
   updateWindowStatus();
+}
+
+void reconnectToWiFi() {
+  Serial.println("Attempting to reconnect to Wi-Fi...");
+
+  WiFiManager wifiManager;
+  wifiManager.setSaveConfigCallback(saveConfigCallback);
+
+  // Включаем режим точки доступа, чтобы быть доступным для новых настроек
+  wifiManager.setAPCallback([](WiFiManager* mgr) {
+    Serial.println("Entered config mode. You can now connect to 'Config ESP8266' to enter new Wi-Fi settings.");
+  });
+
+  // Попробуем подключиться к Wi-Fi сети
+  if (wifiManager.autoConnect("Config ESP8266")) {
+    Serial.println("Reconnected to Wi-Fi!");
+    Serial.print("SSID: ");
+    Serial.println(WiFi.SSID());
+    Serial.print("Password: ");
+    Serial.println(WiFi.psk());
+
+    // Выключаем режим точки доступа после успешного подключения
+    wifiManager.setAPCallback(nullptr);
+  } else {
+    Serial.println("Failed to reconnect. You can try again.");
+  }
 }
