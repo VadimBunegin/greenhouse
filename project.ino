@@ -8,8 +8,9 @@
 // Relay pins
 #define RELAY_IN1 D7 // Window open
 #define RELAY_IN2 D8 // Window close
-#define RELAY_IN3 D3 // Warm
+#define RELAY_IN6 D3 // Replace analog sensor
 #define RELAY_IN4 D4 // Irrigation
+#define RELAY_IN3 D0 // Warm
 
 #define RELAY_IN5 3 // Light
 
@@ -40,6 +41,8 @@ const unsigned long windowCloseDuration = 30000; // Window close duration (in mi
 unsigned long windowStartTime = 0;
 bool windowOpening = false;
 bool windowClosing = false;
+
+int ground_hum = 0;
 
 MicroDS3231 rtc;
 ESP8266WebServer server(80);
@@ -178,6 +181,10 @@ String html = "<html><body>";
   float humidity = dht.getHumidity();
   html += "<p>Temp Sensor Value: " + String(warmSensorValue) + "</p>";
   html += "<p>Humidity Sensor Value: " + String(humidity) + "</p>";
+  html += "<hr>";
+
+  html += "<p>Ground Humidity Sensor Value: " + String(ground_hum) + "</p>";
+  
   html += "<script>";
 
   html += "function startPoliv() {";
@@ -536,6 +543,7 @@ void setup()
   pinMode(RELAY_IN3, OUTPUT);
   pinMode(RELAY_IN4, OUTPUT);
   pinMode(RELAY_IN5, OUTPUT);
+  pinMode(RELAY_IN6, OUTPUT);
   
 
   digitalWrite(RELAY_IN1, HIGH);
@@ -543,6 +551,7 @@ void setup()
   digitalWrite(RELAY_IN3, HIGH);
   digitalWrite(RELAY_IN4, HIGH);
   digitalWrite(RELAY_IN5, HIGH);
+  digitalWrite(RELAY_IN6, HIGH);
 
   dht.setup(D5, DHTesp::DHT22);
 
@@ -626,6 +635,14 @@ void loop()
     else if(temperature < windowOffThreshold || humidity > 98){
       close_window();
     }
+  }
+
+  if (rtc.getSeconds() == 0 ){
+    digitalWrite(RELAY_IN6, LOW);
+    delay(100);
+    ground_hum = analogRead(A0);
+    digitalWrite(RELAY_IN6, HIGH);
+    delay(100);
   }
 
   updateWindowStatus();
