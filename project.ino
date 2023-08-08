@@ -604,7 +604,7 @@ void setup()
   server.on("/reset-manual-control-window", handleResetManualControlWindow);
   server.on("/set-threshold-window", handleSetThresholdWindow);
   server.on("/set-off-threshold-window", handleSetOffThresholdWindow);
-  server.on("/reconnect", reconnectToWiFi);
+  server.on("/reconnect", clearWifiCredentials);
   server.begin();
 }
 
@@ -664,6 +664,13 @@ void loop()
   }
 
   updateWindowStatus();
+}
+
+void clearWifiCredentials() {
+  WiFiManager wifiManager;
+  wifiManager.resetSettings();
+  Serial.println("Wi-Fi credentials cleared.");
+  ESP.restart(); // Restart ESP8266 after clearing credentials
 }
 
 void reconnectToWiFi() {
