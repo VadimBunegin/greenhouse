@@ -86,9 +86,9 @@ void handleRoot()
 
   html += "<p>Status: ";
   if (is_irrigation_on) {
-    html += "Irrigation is running";
+    html += "<div style = 'color:green'>Irrigation is running</div>";
   } else {
-    html += "Irrigation is not running";
+    html += "<div style = 'color:red'>Irrigation is not running</div>";
   }
   html += "</p>";
 
@@ -114,9 +114,9 @@ void handleRoot()
 
   html += "<p>Light Status: ";
   if (is_light_on) {
-    html += "On";
+    html += "<div style = 'color:green'>On</div>";
   } else {
-    html += "Off";
+    html += "<div style = 'color:red'>Off</div>";
   }
   html += "</p>";
 
@@ -125,7 +125,7 @@ void handleRoot()
 
   html += "<button type='button' onclick='startLight()'>Turn On Light</button>";
   html += "<button type='button' onclick='stopLight()'>Turn Off Light</button>";
-  html += "<button type='button' onclick='resetManualControl()'>Reset Manual Control</button>";
+  html += "<button type='button' onclick='resetManualControl()'>Reset Manual Control</button>" + String(LightManualControl);
   html += "<hr>";
 
 
@@ -145,9 +145,9 @@ void handleRoot()
 
   html += "<p>Warm Status: ";
   if (is_warm_on) {
-    html += "On";
+    html += "<div style = 'color:green'>On</div>";
   } else {
-    html += "Off";
+    html += "<div style = 'color:red'>Off</div>";
   }
   html += "</p>";
 
@@ -157,7 +157,7 @@ void handleRoot()
 
   html += "<button type='button' onclick='startWarm()'>Turn On Warm</button>";
   html += "<button type='button' onclick='stopWarm()'>Turn Off Warm</button>";
-  html += "<button type='button' onclick='resetManualControlWarm()'>Reset Manual Control Warm</button>";
+  html += "<button type='button' onclick='resetManualControlWarm()'>Reset Manual Control Warm</button>"+String(WarmManualControl); 
   html += "<hr>";
 
   html += "<h1>Window Control</h1>";
@@ -174,15 +174,15 @@ void handleRoot()
   html += "</form>";
   html += "<p>Status: ";
   if (is_window_on) {
-    html += "Window open";
+    html += "<div style = 'color:green'>Window open</div>";
   } else {
-    html += "Window close";
+    html += "<div style = 'color:red'>Window close</div>";
   }
   html += "</p>";
 
   html += "<button type='button' onclick='openWindow()'>Open Window</button>";
   html += "<button type='button' onclick='closeWindow()'>Close Window</button>";
-  html += "<button type='button' onclick='resetManualControlWindow()'>Reset Manual Control Window</button>";
+  html += "<button type='button' onclick='resetManualControlWindow()'>Reset Manual Control Window</button>"+String(WindowManualControl);
   float humidity = dht.getHumidity();
   html += "<p>Temp Sensor Value: " + String(warmSensorValue) + "</p>";
   html += "<p>Humidity Sensor Value: " + String(humidity) + "</p>";
