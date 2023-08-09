@@ -1,10 +1,11 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
-#include <microDS3231.h>
+#include <RTClib.h>
 #include "DHTesp.h"
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <WiFiManager.h> // Убедитесь, что библиотека WiFiManager установлена через менеджер библиотек Arduino IDE.
+#include <Wire.h>
 
 // Relay pins
 #define RELAY_IN1 D7 // Window open
@@ -45,7 +46,7 @@ bool windowClosing = false;
 
 int ground_hum = 0;
 
-MicroDS3231 rtc;
+RTC_DS3231 rtc;
 ESP8266WebServer server(80);
 
 const int oneWireBus = D6;
@@ -104,8 +105,8 @@ void handleRoot()
 
   html += "<button type='button' onclick='startPoliv()'>Start Irrigation</button>";
   html += "<button type='button' onclick='stopPoliv()'>Stop Irrigation</button>";
-
-  html += "<p>Time: " + String(rtc.getTimeString()) + "</p>";
+  DateTime now = rtc.now();
+  html += "<p>Light Sensor Value: " + String(now.hour()) + ":" + String(now.minute()) + ":" + String(now.second()) + "</p>";
   html += "<hr>";
 
   html += "<h1>Light Control</h1>";
@@ -199,8 +200,16 @@ void handleRoot()
   html += "<p>Humidity Sensor Value: " + String(humidity) + "</p>";
   
   html += "<hr>";
+  html += "<p>Enter current time:</p>";
+  html += "<form id='setRTCTimeForm' method='POST'>";
+  html += "Hour: <input type='number' name='currentHour' min='0' max='23'><br>";
+  html += "Minute: <input type='number' name='currentMinute' min='0' max='59'><br>";
+  html += "<input type='button' value='Set Time' onclick='setCurrentTime()'>";
+  html += "</form>";
+  html += "<hr>";
+
   html += "<h1>Indications</h1>";
-  html += "<p>Time: " + String(rtc.getTimeString()) + "</p>";
+
   html += "<p>Ground Humidity Sensor Value: " + String(ground_hum) + "</p>";
   html += "<p>Temperature in the house: " + String(warmSensorValue) + "</p>";
   html += "<p>Outdoor temperature: " + String(dht_temperature) + "</p>";
@@ -362,6 +371,23 @@ void handleRoot()
   html += "        location.reload();";
   html += "      } else {";
   html += "        console.log('Error setting irrigation times.');";
+  html += "      }";
+  html += "    }";
+  html += "  };";
+  html += "}";
+
+  html += "function setCurrentTime() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  var form = document.getElementById('setRTCTimeForm');";
+  html += "  var formData = new FormData(form);";
+  html += "  xhr.open('POST', '/set-current-time', true);";
+  html += "  xhr.send(formData);";
+  html += "  xhr.onreadystatechange = function() {";
+  html += "    if (xhr.readyState === XMLHttpRequest.DONE) {";
+  html += "      if (xhr.status === 200) {";
+  html += "        location.reload();";
+  html += "      } else {";
+  html += "        console.log('Error setting current time.');";
   html += "      }";
   html += "    }";
   html += "  };";
@@ -588,6 +614,16 @@ void handleSetIrrigationTimes() {
   server.send(200, "text/html", "");
 }
 
+void handleSetCurrentTime() {
+ 
+  int newHour = server.arg("currentHour").toInt();
+  int newMinute = server.arg("currentMinute").toInt();
+  DateTime now = rtc.now();
+  now = DateTime(now.year(), now.month(), now.day(), newHour, newMinute, now.second());
+  rtc.adjust(now);
+  
+  server.send(200, "text/html", "");
+}
 
 void setup()
 {
@@ -610,7 +646,12 @@ void setup()
   digitalWrite(RELAY_IN6, HIGH);
 
   dht.setup(D5, DHTesp::DHT22);
-
+  Wire.begin();
+  
+  rtc.begin();
+  
+  // Настройка времени: год-месяц-день час:минута:секунда
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   attachInterrupt(digitalPinToInterrupt(Interrupt_Pin), getFlow, FALLING);
 
   WiFiManager wifiManager;
@@ -656,21 +697,25 @@ void setup()
   server.on("/set-off-threshold-window", handleSetOffThresholdWindow);
   server.on("/reconnect", clearWifiCredentials);
   server.on("/set-irrigation-times", handleSetIrrigationTimes);
+  server.on("/set-current-time", handleSetCurrentTime);
+
   server.begin();
 }
 
 void loop()
 {
+  DateTime now = rtc.now();
   server.handleClient();
   count_imp_all = count_imp_all + count_imp;
   count_imp = 0;
 
-  int currentHour = rtc.getHours();
-  int currentMinute = rtc.getMinutes();
+  int currentHour = now.hour();
+  int currentMinute = now.minute();
+  int currentSecond = now.second();
 
   // Активация полива в установленные времена
-  if ((currentHour == irrigationStartTimeHour1 && currentMinute == irrigationStartTimeMinute1 && rtc.getSeconds() == 0) ||
-      (currentHour == irrigationStartTimeHour2 && currentMinute == irrigationStartTimeMinute2 && rtc.getSeconds() == 0)) {
+  if ((currentHour == irrigationStartTimeHour1 && currentMinute == irrigationStartTimeMinute1 && currentSecond == 0) ||
+      (currentHour == irrigationStartTimeHour2 && currentMinute == irrigationStartTimeMinute2 && currentSecond == 0)) {
     start_poliv();
   }
 
@@ -709,9 +754,9 @@ void loop()
     }
   }
 
-  if ((currentHour == 0 && currentMinute == 0 && rtc.getSeconds() == 0) || 
-  (currentHour == 8 && currentMinute == 0 && rtc.getSeconds() == 0) || 
-  (currentHour == 16 && currentMinute == 0 && rtc.getSeconds() == 0)){ // считывание влажности почвы 3 раза в сутки
+  if ((currentHour == 0 && currentMinute == 0 && currentSecond == 0) || 
+  (currentHour == 8 && currentMinute == 0 && currentSecond == 0) || 
+  (currentHour == 16 && currentMinute == 0 && currentSecond == 0)){ // считывание влажности почвы 3 раза в сутки
     digitalWrite(RELAY_IN6, LOW);
     delay(100);
     ground_hum = analogRead(A0);
