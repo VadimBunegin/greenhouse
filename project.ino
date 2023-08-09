@@ -196,10 +196,17 @@ void handleRoot()
   float humidity = dht.getHumidity();
   html += "<p>Temp Sensor Value: " + String(warmSensorValue) + "</p>";
   html += "<p>Humidity Sensor Value: " + String(humidity) + "</p>";
+  
   html += "<hr>";
-
+  html += "<h1>Indications</h1>";
+  html += "<p>Time: " + String(rtc.getTimeString()) + "</p>";
   html += "<p>Ground Humidity Sensor Value: " + String(ground_hum) + "</p>";
+  html += "<p>Temperature in the house: " + String(warmSensorValue) + "</p>";
+  html += "<p>Outdoor temperature: " + String(dht_temperature) + "</p>";
+  html += "<p>Humidity Sensor Value: " + String(humidity) + "</p>";
+  html += "<p>Light Sensor Value: " + String(lightSensorValue) + "</p>";
   html += "<hr>";
+  
   html += "<button type='button' onclick='reconnect()'>Reconnect WIFI</button>";
   html += "<script>";
   html += "function startPoliv() {";
