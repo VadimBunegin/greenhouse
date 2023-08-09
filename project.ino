@@ -194,6 +194,7 @@ void handleRoot()
   html += "<button type='button' onclick='closeWindow()'>Close Window</button>";
   html += "<button type='button' onclick='resetManualControlWindow()'>Reset Manual Control Window</button>"+String(WindowManualControl);
   float humidity = dht.getHumidity();
+  float dht_temperature = dht.getTemperature();
   html += "<p>Temp Sensor Value: " + String(warmSensorValue) + "</p>";
   html += "<p>Humidity Sensor Value: " + String(humidity) + "</p>";
   
