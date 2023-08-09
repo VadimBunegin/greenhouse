@@ -9,9 +9,9 @@
 // Relay pins
 #define RELAY_IN1 D7 // Window open
 #define RELAY_IN2 D8 // Window close
-#define RELAY_IN6 D3 // Replace analog sensor
+#define RELAY_IN6 D3 // Warm
 #define RELAY_IN4 D4 // Irrigation
-#define RELAY_IN3 D0 // Warm
+#define RELAY_IN3 D0 //  Replace analog sensor
 
 #define RELAY_IN5 3 // Light
 
@@ -48,14 +48,16 @@ int ground_hum = 0;
 MicroDS3231 rtc;
 ESP8266WebServer server(80);
 
-const char* ssid = "Beeline_5E79";
-const char* password = "92515952";
-
 const int oneWireBus = D6;
 OneWire oneWire(oneWireBus);
 DallasTemperature sensors(&oneWire);
 
 DHTesp dht;
+
+int irrigationStartTimeHour1 = 8;    // Час первой активации полива
+int irrigationStartTimeMinute1 = 0;  // Минута первой активации полива
+int irrigationStartTimeHour2 = 16;   // Час второй активации полива
+int irrigationStartTimeMinute2 = 0;  // Минута второй активации полива
 
 void saveConfigCallback() {
   Serial.println("Save config callback!");
@@ -82,6 +84,14 @@ void handleRoot()
   html += "<form id='setForm' method='POST'>";
   html += "<input type='number' name='milliliters' min='1' value='" + String(requiredMilliliters*5) + "'><br>";
   html += "<input type='button' value='Set' onclick='setMilliliters()'>";
+  html += "</form>";
+  html += "<p>Enter irrigation start times:</p>";
+  html += "<form id='setTimeForm' method='POST'>";
+  html += "1st Activation - Hour: <input type='number' name='startHour1' min='0' max='23' value='" + String(irrigationStartTimeHour1) + "'><br>";
+  html += "1st Activation - Minute: <input type='number' name='startMinute1' min='0' max='59' value='" + String(irrigationStartTimeMinute1) + "'><br>";
+  html += "2nd Activation - Hour: <input type='number' name='startHour2' min='0' max='23' value='" + String(irrigationStartTimeHour2) + "'><br>";
+  html += "2nd Activation - Minute: <input type='number' name='startMinute2' min='0' max='59' value='" + String(irrigationStartTimeMinute2) + "'><br>";
+  html += "<input type='button' value='Set Times' onclick='setIrrigationTimes()'>";
   html += "</form>";
 
   html += "<p>Status: ";
@@ -331,6 +341,23 @@ void handleRoot()
   html += "  xhr.send();";
   html += "  location.reload();";
   html += "}";
+
+  html += "function setIrrigationTimes() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  var form = document.getElementById('setTimeForm');";
+  html += "  var formData = new FormData(form);";
+  html += "  xhr.open('POST', '/set-irrigation-times', true);";
+  html += "  xhr.send(formData);";
+  html += "  xhr.onreadystatechange = function() {";
+  html += "    if (xhr.readyState === XMLHttpRequest.DONE) {";
+  html += "      if (xhr.status === 200) {";
+  html += "        location.reload();";
+  html += "      } else {";
+  html += "        console.log('Error setting irrigation times.');";
+  html += "      }";
+  html += "    }";
+  html += "  };";
+  html += "}";
   html += "</script>";
   html += "</body></html>";
   
@@ -543,6 +570,17 @@ void stop_poliv()
   is_irrigation_on = false;
 }
 
+void handleSetIrrigationTimes() {
+
+  irrigationStartTimeHour1 = server.arg("startHour1").toInt();
+  irrigationStartTimeMinute1 = server.arg("startMinute1").toInt();
+  irrigationStartTimeHour2 = server.arg("startHour2").toInt();
+  irrigationStartTimeMinute2 = server.arg("startMinute2").toInt();
+  
+  server.send(200, "text/html", "");
+}
+
+
 void setup()
 {
   
@@ -605,6 +643,7 @@ void setup()
   server.on("/set-threshold-window", handleSetThresholdWindow);
   server.on("/set-off-threshold-window", handleSetOffThresholdWindow);
   server.on("/reconnect", clearWifiCredentials);
+  server.on("/set-irrigation-times", handleSetIrrigationTimes);
   server.begin();
 }
 
@@ -614,8 +653,12 @@ void loop()
   count_imp_all = count_imp_all + count_imp;
   count_imp = 0;
 
-  if (rtc.getSeconds() == 1)
-  {
+  int currentHour = rtc.getHours();
+  int currentMinute = rtc.getMinutes();
+
+  // Активация полива в установленные времена
+  if ((currentHour == irrigationStartTimeHour1 && currentMinute == irrigationStartTimeMinute1 && rtc.getSeconds() == 0) ||
+      (currentHour == irrigationStartTimeHour2 && currentMinute == irrigationStartTimeMinute2 && rtc.getSeconds() == 0)) {
     start_poliv();
   }
 
@@ -655,7 +698,9 @@ void loop()
     }
   }
 
-  if (rtc.getSeconds() == 0 ){
+  if ((currentHour == 0 && currentMinute == 0 && rtc.getSeconds() == 0) || 
+  (currentHour == 8 && currentMinute == 0 && rtc.getSeconds() == 0) || 
+  (currentHour == 16 && currentMinute == 0 && rtc.getSeconds() == 0)){ // считывание влажности почвы 3 раза в сутки
     digitalWrite(RELAY_IN6, LOW);
     delay(100);
     ground_hum = analogRead(A0);
