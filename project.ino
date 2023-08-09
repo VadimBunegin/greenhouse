@@ -623,7 +623,11 @@ void setup()
   else{
     reconnectToWiFi();
   }
-
+  digitalWrite(RELAY_IN6, LOW);
+  delay(100);
+  ground_hum = analogRead(A0);
+  digitalWrite(RELAY_IN6, HIGH);
+  delay(100);
   // Если подключение установлено или было введено вручную, продолжим выполнение кода
   Serial.println("Connected to Wi-Fi!");
   Serial.print("SSID: ");
@@ -672,7 +676,6 @@ void loop()
 
   sensors.requestTemperatures();
   float humidity = dht.getHumidity();
-  float dht_temperature = dht.getTemperature();
   float temperature = sensors.getTempCByIndex(0);
 
   if (!LightManualControl){
