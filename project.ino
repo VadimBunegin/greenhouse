@@ -4,7 +4,7 @@
 #include "DHTesp.h"
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <WiFiManager.h> // Убедитесь, что библиотека WiFiManager установлена через менеджер библиотек Arduino IDE.
+#include <WiFiManager.h> 
 #include <Wire.h>
 
 // Relay pins
@@ -30,11 +30,11 @@ bool WarmManualControl = false;
 bool LightManualControl = false;
 bool WindowManualControl = false;
 
-int lightThreshold = 200; // Default threshold value
+int lightThreshold = 200;
 int lightOffThreshold = 100;
-float warmThreshold = 20; // Default threshold value
+float warmThreshold = 20;
 float warmOffThreshold = 10;
-float windowThreshold = 30; // Default threshold value
+float windowThreshold = 30;
 float windowOffThreshold = 25;
 
 const unsigned long windowOpenDuration = 30000; // Window open duration (in milliseconds)
@@ -77,6 +77,7 @@ void ICACHE_RAM_ATTR getFlow()
   }
 }
 
+//HTML и JS написан в этой функции
 void handleRoot()
 {
   String html = "<html><body>";
@@ -399,6 +400,8 @@ void handleRoot()
   server.send(200, "text/html", html);
 }
 
+//необходимые функции
+
 void handleSet()
 {
   if (server.hasArg("milliliters"))
@@ -625,6 +628,8 @@ void handleSetCurrentTime() {
   server.send(200, "text/html", "");
 }
 
+
+//Настройки
 void setup()
 {
   
@@ -702,6 +707,7 @@ void setup()
   server.begin();
 }
 
+//Логика работы
 void loop()
 {
   DateTime now = rtc.now();
@@ -767,6 +773,7 @@ void loop()
   updateWindowStatus();
 }
 
+//Подключение WIFI
 void clearWifiCredentials() {
   WiFiManager wifiManager;
   wifiManager.resetSettings();
