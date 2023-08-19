@@ -60,6 +60,11 @@ int irrigationStartTimeMinute1 = 0;  // Минута первой активац
 int irrigationStartTimeHour2 = 16;   // Час второй активации полива
 int irrigationStartTimeMinute2 = 0;  // Минута второй активации полива
 
+int lightStartTimeHour = 8;    // Час активации полива
+int lightStartTimeMinute = 0;  // Минута активации полива
+int lightStopTimeHour = 16;   // Час деактивации полива
+int lightStopTimeMinute = 0;  // Минута деактивации полива
+
 void saveConfigCallback() {
   Serial.println("Save config callback!");
 }
@@ -111,7 +116,6 @@ void handleRoot()
   html += "<hr>";
 
   html += "<h1>Light Control</h1>";
-
   html += "<p>Include when the value is less...(On)</p>";
   html += "<form id='setThresholdForm' method='POST'>";
   html += "<input type='number' name='threshold' value='" + String(lightThreshold) + "'><br>";
@@ -122,6 +126,16 @@ void handleRoot()
   html += "<form id='setOffThresholdForm' method='POST'>";
   html += "<input type='number' name='offThreshold' value='" + String(lightOffThreshold) + "'><br>";
   html += "<input type='button' value='Set Off Threshold' onclick='setOffThreshold()'>";
+  html += "</form>";
+
+  html += "</form>";
+  html += "<p>Enter light start times:</p>";
+  html += "<form id='setTimeLightForm' method='POST'>";
+  html += "Activation - Hour: <input type='number' name='startHourLight' min='0' max='23' value='" + String(lightStartTimeHour) + "'><br>";
+  html += "Activation - Minute: <input type='number' name='startMinuteLight' tmin='0' max='59' value='" + String(lightStartTimeMinute) + "'><br>";
+  html += "Deactivation - Hour: <input type='number' name='stopHourLigh' min='0' max='23' value='" + String(lightStopTimeHour) + "'><br>";
+  html += "Deactivation - Minute: <input type='number' name='stopMinuteLight' min='0' max='59' value='" + String(lightStopTimeMinute) + "'><br>";
+  html += "<input type='button' value='Set Times' onclick='setLightTimes()'>";
   html += "</form>";
 
   html += "<p>Light Status: ";
@@ -377,6 +391,23 @@ void handleRoot()
   html += "  };";
   html += "}";
 
+  html += "function setLightTimes() {";
+  html += "  var xhr = new XMLHttpRequest();";
+  html += "  var form = document.getElementById('setTimeLightForm');";
+  html += "  var formData = new FormData(form);";
+  html += "  xhr.open('POST', '/set-light-times', true);";
+  html += "  xhr.send(formData);";
+  html += "  xhr.onreadystatechange = function() {";
+  html += "    if (xhr.readyState === XMLHttpRequest.DONE) {";
+  html += "      if (xhr.status === 200) {";
+  html += "        location.reload();";
+  html += "      } else {";
+  html += "        console.log('Error setting light times.');";
+  html += "      }";
+  html += "    }";
+  html += "  };";
+  html += "}";
+
   html += "function setCurrentTime() {";
   html += "  var xhr = new XMLHttpRequest();";
   html += "  var form = document.getElementById('setRTCTimeForm');";
@@ -617,6 +648,16 @@ void handleSetIrrigationTimes() {
   server.send(200, "text/html", "");
 }
 
+void handleSetLightTimes() {
+
+  lightStartTimeHour = server.arg("startHourLight").toInt();
+  lightStartTimeMinute = server.arg("startMinuteLight").toInt();
+  lightStopTimeHour2 = server.arg("stopHourLight").toInt();
+  lightStopTimeMinute2 = server.arg("stopMinuteLight").toInt();
+  
+  server.send(200, "text/html", "");
+}
+
 void handleSetCurrentTime() {
  
   int newHour = server.arg("currentHour").toInt();
@@ -702,7 +743,9 @@ void setup()
   server.on("/set-off-threshold-window", handleSetOffThresholdWindow);
   server.on("/reconnect", clearWifiCredentials);
   server.on("/set-irrigation-times", handleSetIrrigationTimes);
+  server.on("/set-light-times", handleSetLightTimes);
   server.on("/set-current-time", handleSetCurrentTime);
+  
 
   server.begin();
 }
@@ -730,11 +773,11 @@ void loop()
   float temperature = sensors.getTempCByIndex(0);
 
   if (!LightManualControl){
-    if (analogRead(A0) < lightThreshold)
+    if ((analogRead(A0 < lightThreshold) || (currentHour == lightStartTimeHour && currentMinute == lightStartTimeMinute && currentSecond == 0))
     {
       start_light();
     }
-    else if (analogRead(A0) > lightOffThreshold)
+    else if ((analogRead(A0 > lightThreshold) || (currentHour == lightStopTimeHour && currentMinute == lightStopTimeMinute && currentSecond == 0))
     {
       stop_light();
     }
